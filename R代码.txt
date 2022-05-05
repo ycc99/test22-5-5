@@ -1,0 +1,132 @@
+#3-1伺服数据，建立回归树，并与线性回归比较
+#安装包
+install.packages("rpart")
+install.packages("rpart.plot")
+library("rpart")
+library("rpart.plot")
+
+#读入数据
+myfile<-"F:/servo.csv"
+mydata<-read.csv(file=myfile,header = TRUE)
+mydata$motor<-as.factor(mydata$motor)
+mydata$screw<-as.factor(mydata$screw)
+
+
+#建立分类树
+ctl<-rpart.control(minsplit=20,maxcompete=4,xval=10,maxdepth=10,cp=0)
+set.seed(12345)
+tree1<-rpart(class~.,data=mydata,method="anova",control = ctl)
+printcp(tree1)
+#可视化复杂度参数CP
+plotcp(tree1)
+#绘制回归树
+rpart.plot(tree1,type = 4,branch=0,extra=1)
+
+
+#再建立回归树
+seed(12345)
+(tree2<-rpart(class~.,data=mydata,method = "anova"))
+rpart.plot(tree2,type = 4,branch=0,extra=1)
+printcp(tree2)
+
+
+#选择好的回归树
+tree3<-prune(tree1,cp=0.07)
+printcp(tree3)
+plotcp(tree3)
+rpart.plot(tree3,type=4,branch=0,extra=1)
+
+
+
+#线性回归
+fit=lm(class~mydata$motor+mydata$screw+mydata$pgain+mydata$vgain,data=mydata)
+summary(fit)
+
+#通过模型拟合出的理论值
+fitted(fit)
+
+#模型可视化
+plot(mydata$class,mydata$motor)
+plot(mydata$class,mydata$screw)
+plot(mydata$class,mydata$pgain)
+plot(mydata$class,mydata$vgain)
+#lines(mydata$class,fitted(fit))
+
+
+#3-2翼型数据bagging回归
+#安装包
+install.packages("rpart")
+library(rpart)
+
+#导入数据
+myfile1<-"F:/airfoil.csv"
+mydata1<-read.csv(file=myfile1,head=TRUE)
+mydata1$Angle<-as.factor(mydata1$Angle)
+mydata1$Chord<-as.factor(mydata1$Chord)
+
+ctl<-rpart.control(minsplit=20,maxcompete=4,maxdepth=30,cp=0.015,xval=10)
+set.seed(12345)
+
+#建立单个回归树
+mytree1<-rpart(Pressure~.,data=mydata1)
+mytree1
+plot(mytree1)
+text(mytree1)
+CFit1<-predict(mytree1,mydata1,type = "matrix")
+ConfM1<-table(mydata1$Pressure,CFit1)
+(E1<-(sum(ConfM1)-sum(diag(ConfM1)))/sum(ConfM1))#单个树的错判率
+
+#bagging回归树
+install.packages("ipred")
+library("ipred")
+set.seed(12345)
+BagM1<-bagging(Pressure~.,data=mydata1,coob=TRUE,control=ctl)
+
+CFit2<-predict(BagM1,mydata1)
+ConfM2<-table(mydata1$Pressure,CFit2)
+(E2<-(sum(ConfM2)-sum(diag(ConfM2)))/sum(ConfM2))
+
+
+#3-3随机森林回归
+#导入数据
+myfile2<-"F:/energy.csv"
+mydata2<-read.csv(file=myfile2,header = TRUE)
+
+#安装包
+install.packages("randomForest")
+library("randomForest")
+
+#变量相关性
+cor(mydata2)
+pairs(~.,data=mydata2,maintainer='mydata')
+
+#线性回归
+function1<-lm(Y1~X1+X2+X3+X4+X5+X6+X7+X8,data=mydata2)
+summary(function1)
+
+#随机森林回归
+set.seed(12345)
+(rFM<-randomForest(Y1~X1+X2+X3+X4+X5+X6+X7+X8,data = mydata2,importance=TRUE))
+
+head(rFM$oob.times)
+
+DrawL<-par()
+par(mfrow=c(2,1),mar=c(5,5,3,1))
+plot(rFM,main = "随机森林的OOB错判率和决策树棵树")
+#plot(margin(rFM),type="h",main="边界点探测",xlab="观测序列"，ylab="比率差")
+par(DrawL)
+Fit<-predict(rFM,mydata2)
+ConfM5<-table(mydata2$Y1,Fit)
+(E5<-(sum(ConfM5)-sum(diag(ConfM5)))/sum(ConfM5))
+
+head(treesize(rFM))
+#第一棵树的部分信息
+head(getTree(rfobj = rFM,k=1,labelVar = TRUE))
+
+
+#变量重要性
+barplot(rFM$importance[,2],main="输入变量重要性测度指标柱形图")
+box()
+importance(rFM,type = 1)
+
+varImpPlot(x=rFM,sort = TRUE,n.var = nrow(rFM$importance),main="输入变量重要性测度散点图")
